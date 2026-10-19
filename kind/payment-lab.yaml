@@ -1,0 +1,18 @@
+# kind cluster definition for the payment-simulation-lab.
+# Source of truth for the cluster topology: recreate with scripts/create-cluster.sh.
+#
+# Every node is a Docker container running a full Kubernetes node (kubelet +
+# containerd) on the same physical machine, inside the Colima VM.
+#
+# The node image is pinned by tag AND digest, as the kind v0.33.0 release notes
+# recommend, so a recreate produces the same Kubernetes version.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: payment-lab
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5

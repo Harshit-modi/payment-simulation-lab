@@ -1,0 +1,85 @@
+# Two ConfigMaps on purpose:
+#   processor-mock-nginx      -> how the server behaves (infrastructure-ish)
+#   processor-mock-responses  -> what the processor says (processor behavior)
+# This previews the project rule: processor behavior is configuration,
+# separate from how it is deployed.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: processor-mock-nginx-v1
+  namespace: lab01
+  labels:
+    app.kubernetes.io/name: processor-mock
+immutable: true
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      default_type application/json;
+
+      # $hostname is the Pod name, so you can see which replica answered.
+      add_header X-Served-By $hostname always;
+
+      add_header X-Processor acme-pay always;
+
+      location = /healthz {
+        return 200 '{"status":"ok"}\n';
+      }
+
+      location = /v1/payments/authorize {
+        alias /usr/share/nginx/mock/authorize.json;
+      }
+
+      location / {
+        return 404 '{"error":"not_found"}\n';
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: processor-mock-nginx-v2
+  namespace: lab01
+  labels:
+    app.kubernetes.io/name: processor-mock
+immutable: true
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      default_type application/json;
+
+      # $hostname is the Pod name, so you can see which replica answered.
+      add_header X-Served-By $hostname always;
+
+      add_header X-Processor acme-pay always;
+
+      location = /healthz {
+        return 503 '{"status":"ok"}\n';
+      }
+
+      location = /v1/payments/authorize {
+        alias /usr/share/nginx/mock/authorize.json;
+      }
+
+      location / {
+        return 404 '{"error":"not_found"}\n';
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: processor-mock-responses
+  namespace: lab01
+  labels:
+    app.kubernetes.io/name: processor-mock
+data:
+  authorize.json: |
+    {
+      "processor": "acme-pay",
+      "status": "DECLINED",
+      "responseCode": "05",
+      "authorizationId": "AUTH-STATIC-0001",
+      "message": "static mock response"
+    }

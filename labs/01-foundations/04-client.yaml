@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  namespace: lab01
+spec:
+  containers:
+  - name: busybox
+    image: busybox:1.36
+    command:
+    - /bin/sh
+    - -c
+    - "wget -S -qO- http://acme-pay.lab01.svc.cluster.local/v1/payments/authorize"
+  restartPolicy: Never

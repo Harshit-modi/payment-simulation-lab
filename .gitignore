@@ -1,0 +1,30 @@
+# Kubeconfigs and credentials
+.kube/
+*.kubeconfig
+kubeconfig*
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+*-secret.yaml
+*.secret.yaml
+
+# Logs and temporary output
+*.log
+logs/
+tmp/
+out/
+.tmp/
+
+# Helm build artifacts
+charts/*/charts/
+charts/*/Chart.lock
+*.tgz
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
