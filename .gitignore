@@ -15,6 +15,7 @@ secrets/
 # Logs and temporary output
 *.log
 logs/
+results/
 tmp/
 out/
 .tmp/
