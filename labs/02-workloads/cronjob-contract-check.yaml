@@ -1,0 +1,85 @@
+# cronjob contract check yaml file that runs every minute
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: acme-pay-contract-check
+  namespace: lab01
+spec:
+  schedule: "*/1 * * * *"
+  timeZone: "America/Los_Angeles"
+  concurrencyPolicy: Replace
+  startingDeadlineSeconds: 30
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  backoffLimit: 2
+  activeDeadlineSeconds: 60
+  podFailurePolicy:
+    rules:
+      - action: FailJob
+        onExitCodes:
+          operator: In
+          values: [2]
+          containerName: pi
+      - action: Ignore
+        onPodConditions:
+          - type: DisruptionTarget
+      - action: Count
+        onExitCodes:
+          operator: In
+          values: [1]
+          containerName: pi
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: contract-check
+            image: busybox:1.36
+            env:
+              - name: TARGET_URL
+                value: http://acme-pay.lab01.svc.cluster.local/v1/payments/authorize
+              - name: EXPECTED_STATUS
+                value: DECLINED
+              - name: EXPECTED_RESPONSE_CODE
+                value: "05"
+              - name: EXPECTED_PROCESSOR
+                value: acme-pay
+            command:
+              - /bin/sh
+              - -c
+              - |
+                sleep 90
+                if wget -S -q -O /tmp/response-body "$TARGET_URL" 2>/tmp/response-headers
+                then
+                  failed=0
+                  check() {
+                    # $1 = what is checked, $2 = expected text, $3 = file to search
+                    if grep -qF "$2" "$3"
+                    then
+                      echo "PASS: $1"
+                    else
+                      echo "FAIL: $1"
+                      echo "  expected: $2"
+                      failed=1
+                    fi
+                  }
+                  check "response body status" "\"status\": \"$EXPECTED_STATUS\"" /tmp/response-body
+                  check "response body responseCode" "\"responseCode\": \"$EXPECTED_RESPONSE_CODE\"" /tmp/response-body
+                  check "response header X-Processor" "X-Processor: $EXPECTED_PROCESSOR" /tmp/response-headers
+                  if [ "$failed" -eq 0 ]
+                  then
+                    echo "Contract check passed"
+                  else
+                    echo "--- actual response body ---"
+                    cat /tmp/response-body
+                    echo "--- actual response headers ---"
+                    cat /tmp/response-headers
+                    exit 2
+                  fi
+                else
+                  echo "Contract check failed: request to acme-pay did not succeed"
+                  cat /tmp/response-headers
+                  exit 1
+                fi
+          restartPolicy: Never
+      

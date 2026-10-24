@@ -7,6 +7,7 @@ metadata:
     app.kubernetes.io/name: processor-mock
 spec:
   replicas: 2
+  minReadySeconds: 30
   progressDeadlineSeconds: 60
   # The Deployment manages Pods whose labels match this. Immutable after creation.
   selector:
@@ -30,6 +31,16 @@ spec:
               path: /healthz
               port: http
             periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
           resources:
             requests:
               cpu: 50m
