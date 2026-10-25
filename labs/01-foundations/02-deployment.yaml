@@ -60,3 +60,24 @@ spec:
         - name: responses
           configMap:
             name: processor-mock-responses
+      topologySpreadConstraints:
+        # Constraints apply only at scheduling time. matchLabelKeys stops a rollout
+        # from counting the old revision's Pods (which then get deleted).
+        # Zones: prefer balance, but never block failover during a zone outage.
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: processor-mock
+          matchLabelKeys: [pod-template-hash]   # spread each revision on its own
+        # Nodes: never put all replicas on one node. Honor taints so the
+        # tainted control-plane node isn't counted as an empty domain.
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: processor-mock
+          matchLabelKeys: [pod-template-hash]   # spread each revision on its own
