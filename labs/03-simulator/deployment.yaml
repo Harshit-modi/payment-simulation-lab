@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-simulator
+  namespace: simulator
+  labels:
+    app.kubernetes.io/name: payment-simulator
+spec:
+  replicas: 1
+  minReadySeconds: 30
+  progressDeadlineSeconds: 60
+  # The Deployment manages Pods whose labels match this. Immutable after creation.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-simulator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: payment-simulator   # must satisfy spec.selector
+        processor: acme-pay
+    spec:
+      containers:
+        - name: simulator
+          image: payment-simulator:0.1.1
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 128Mi
+      topologySpreadConstraints:
+        # Constraints apply only at scheduling time. matchLabelKeys stops a rollout
+        # from counting the old revision's Pods (which then get deleted).
+        # Zones: prefer balance, but never block failover during a zone outage.
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: payment-simulator
+          matchLabelKeys: [pod-template-hash]   # spread each revision on its own
+        # Nodes: never put all replicas on one node. Honor taints so the
+        # tainted control-plane node isn't counted as an empty domain.
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: payment-simulator
+          matchLabelKeys: [pod-template-hash]   # spread each revision on its own

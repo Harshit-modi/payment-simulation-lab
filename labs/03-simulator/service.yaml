@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: acme-pay
+  namespace: simulator
+spec:
+  selector:
+    app.kubernetes.io/name: payment-simulator
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: http
