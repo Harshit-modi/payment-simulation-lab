@@ -8,7 +8,7 @@ kubeconfig*
 *.key
 *.crt
 *.p12
-secrets/
+/secrets/
 *-secret.yaml
 *.secret.yaml
 
