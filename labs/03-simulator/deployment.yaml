@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: payment-simulator
 spec:
-  replicas: 1
+  replicas: 2
   minReadySeconds: 30
   progressDeadlineSeconds: 60
   # The Deployment manages Pods whose labels match this. Immutable after creation.
@@ -21,10 +21,13 @@ spec:
     spec:
       containers:
         - name: simulator
-          image: payment-simulator:0.1.1
+          image: payment-simulator:0.2.0
           ports:
             - name: http
               containerPort: 8080
+          env:
+            - name: REDIS_URL
+              value: redis://redis.simulator.svc.cluster.local:6379
           readinessProbe:
             httpGet:
               path: /readyz
