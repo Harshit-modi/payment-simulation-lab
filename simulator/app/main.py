@@ -4,11 +4,17 @@ Payment logic is deliberately small; the point is the Kubernetes behavior around
 
 State lives in Redis (REDIS_URL) so every replica sees the same payments and
 idempotency keys, and state survives Pod restarts and rollouts.
+
+Processor behavior (latency, error and throttle rates) comes from a JSON profile
+at PROFILE_PATH, read ONCE at startup: changing behavior means a new versioned
+ConfigMap and a rollout, so each Pod serves exactly one known profile version.
 """
 
+import asyncio
 import hashlib
 import json
 import os
+import random
 import socket
 import uuid
 
@@ -16,8 +22,17 @@ import redis
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
-PROCESSOR = os.environ.get("PROCESSOR_NAME", "acme-pay")
 POD = socket.gethostname()
+
+# Fail fast: a missing or invalid profile crashes startup (CrashLoopBackOff) instead
+# of silently serving default behavior that no test asked for.
+_profile_raw = open(os.environ.get("PROFILE_PATH", "/etc/simulator/profile.json"), "rb").read()
+PROFILE = json.loads(_profile_raw)
+for _field in ("processor", "version", "latency_ms", "error_rate", "throttle_rate"):
+    if _field not in PROFILE:
+        raise SystemExit(f"profile is missing required field: {_field}")
+PROFILE_HASH = hashlib.sha256(_profile_raw).hexdigest()[:12]
+PROCESSOR = PROFILE["processor"]
 IDEMPOTENCY_TTL = int(os.environ.get("IDEMPOTENCY_TTL_SECONDS", "86400"))
 
 store = redis.Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
@@ -30,7 +45,8 @@ TRANSITIONS = {"capture": ("AUTHORIZED", "CAPTURED"), "refund": ("CAPTURED", "RE
 
 def reply(status: int, body: dict) -> JSONResponse:
     return JSONResponse(status_code=status, content=body,
-                        headers={"X-Served-By": POD, "X-Processor": PROCESSOR})
+                        headers={"X-Served-By": POD, "X-Processor": PROCESSOR,
+                                 "X-Profile-Version": f"{PROFILE['version']}@{PROFILE_HASH}"})
 
 
 def error(status: int, code: str, **extra) -> JSONResponse:
@@ -42,6 +58,27 @@ async def store_unavailable(request: Request, exc: redis.RedisError):
     # Fail fast with a clear error instead of going unready: a shared dependency
     # being down shouldn't empty the Service's endpoints (see lab 02.2).
     return error(503, "store_unavailable", detail=type(exc).__name__)
+
+
+async def simulate_processor(forced: str | None) -> JSONResponse | None:
+    """Apply profile latency and faults. X-Simulate forces one: throttle | error | timeout."""
+    lat = PROFILE["latency_ms"]
+    await asyncio.sleep(random.uniform(lat["min"], lat["max"]) / 1000)
+    if forced == "timeout":
+        await asyncio.sleep(PROFILE.get("timeout_seconds", 30))
+        return error(504, "processor_timeout")
+    if forced == "throttle" or (forced is None and random.random() < PROFILE["throttle_rate"]):
+        resp = error(429, "throttled")
+        resp.headers["Retry-After"] = str(PROFILE.get("retry_after_seconds", 1))
+        return resp
+    if forced == "error" or (forced is None and random.random() < PROFILE["error_rate"]):
+        return error(503, "processor_unavailable")
+    return None
+
+
+@app.get("/v1/profile")
+def profile():
+    return reply(200, {"profile": PROFILE, "hash": PROFILE_HASH})
 
 
 def payment_key(run_id: str, payment_id: str) -> str:
@@ -94,7 +131,12 @@ def readyz():
 @app.post("/v1/payments/authorize")
 async def authorize(request: Request,
                     x_test_run_id: str = Header(...),
-                    idempotency_key: str | None = Header(None)):
+                    idempotency_key: str | None = Header(None),
+                    x_simulate: str | None = Header(None)):
+    # Faults run before the idempotency claim: transient failures are never
+    # stored, so a client retry with the same key is processed again.
+    if fault := await simulate_processor(x_simulate):
+        return fault
     payload = await request.json()
     if not isinstance(payload.get("amount"), int) or payload["amount"] <= 0:
         return error(400, "invalid_request", detail="amount must be a positive integer (minor units)")
@@ -115,9 +157,12 @@ async def authorize(request: Request,
 @app.post("/v1/payments/{payment_id}/{action}")
 async def transition(payment_id: str, action: str, request: Request,
                      x_test_run_id: str = Header(...),
-                     idempotency_key: str | None = Header(None)):
+                     idempotency_key: str | None = Header(None),
+                     x_simulate: str | None = Header(None)):
     if action not in TRANSITIONS:
         return error(404, "unknown_action")
+    if fault := await simulate_processor(x_simulate):
+        return fault
 
     def handler():
         key = payment_key(x_test_run_id, payment_id)

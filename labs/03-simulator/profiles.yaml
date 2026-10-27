@@ -1,0 +1,36 @@
+apiVersion: v1
+data:
+  profile.json: |
+    {
+      "processor": "acme-pay",
+      "version": "v1",
+      "latency_ms": {"min": 20, "max": 80},
+      "error_rate": 0.0,
+      "throttle_rate": 0.0,
+      "retry_after_seconds": 1,
+      "timeout_seconds": 30
+    }
+kind: ConfigMap
+immutable: true
+metadata:
+  name: acme-pay-profile-v1
+  namespace: simulator
+---
+apiVersion: v1
+data:
+  profile.json: |
+    {
+      "processor": "acme-pay",
+      "version": "v2",
+      "latency_ms": {"min": 200, "max": 600},
+      "error_rate": 0.05,
+      "throttle_rate": 0.20,
+      "retry_after_seconds": 2,
+      "timeout_seconds": 30
+    }
+kind: ConfigMap
+immutable: true
+metadata:
+  name: acme-pay-profile-v2
+  namespace: simulator
+---
