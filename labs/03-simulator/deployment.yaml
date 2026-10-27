@@ -27,7 +27,7 @@ spec:
               containerPort: 8080
           env:
             - name: REDIS_URL
-              value: redis://redis.simulator.svc.cluster.local:6379
+              value: redis://redis-0.redis.simulator.svc.cluster.local:6379/0   # the primary, by stable per-Pod name
           readinessProbe:
             httpGet:
               path: /readyz

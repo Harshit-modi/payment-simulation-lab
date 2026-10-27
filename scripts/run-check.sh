@@ -88,8 +88,24 @@ trap cleanup EXIT
 # This script runs the unique contract check job in the lab01 namespace and waits for it to complete or fail.
 # it store all results in $LAB_ROOT/results/<run-id>/:
 run_contract_check() {
+    # don't test a half-ready environment: a failure here is an environment problem, not a contract failure
+    echo "Checking that deploy/processor-mock is fully rolled out..."
+    if ! kubectl --kubeconfig="$LAB_KUBECONFIG" --context="$KUBE_CONTEXT" -n "$NAMESPACE" \
+            rollout status deploy/processor-mock --timeout=60s; then
+        echo "FAIL: environment not ready, no contract check was run."
+        exit 1
+    fi
+    # rollout status passes for a Deployment scaled to 0 ("0 of 0 updated"), so also
+    # require at least one available replica, i.e. something can actually serve.
+    available=$(kubectl --kubeconfig="$LAB_KUBECONFIG" --context="$KUBE_CONTEXT" -n "$NAMESPACE" \
+        get deploy/processor-mock -o jsonpath='{.status.availableReplicas}')
+    if [[ "${available:-0}" -lt 1 ]]; then
+        echo "FAIL: environment not ready (0 available replicas), no contract check was run."
+        exit 1
+    fi
+
     echo "Running contract check job in namespace 'lab01'..."
-    if ! job=$(kubectl --kubeconfig="$LAB_KUBECONFIG" --context="$KUBE_CONTEXT" create -f labs/01-foundations/jobs/contract-check.yaml -o name); then
+    if ! job=$(kubectl --kubeconfig="$LAB_KUBECONFIG" --context="$KUBE_CONTEXT" create -f "$LAB_ROOT/labs/01-foundations/jobs/contract-check.yaml" -o name); then
         echo "Failed to create contract check job."
         exit 1
     fi

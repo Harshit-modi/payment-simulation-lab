@@ -1,35 +1,39 @@
-# cronjob contract check yaml file that runs every minute
+# Scheduled contract check: the same test as labs/01-foundations/jobs/contract-check.yaml,
+# run nightly. Trigger it now with:
+#   kubectl -n lab01 create job manual-check --from=cronjob/acme-pay-contract-check
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: acme-pay-contract-check
   namespace: lab01
 spec:
-  schedule: "*/1 * * * *"
+  schedule: "0 2 * * *"
   timeZone: "America/Los_Angeles"
-  concurrencyPolicy: Replace
-  startingDeadlineSeconds: 30
+  # Forbid: a slow run finishes instead of being replaced; activeDeadlineSeconds
+  # below guarantees a hung run can't block every future run.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
-  backoffLimit: 2
-  activeDeadlineSeconds: 60
-  podFailurePolicy:
-    rules:
-      - action: FailJob
-        onExitCodes:
-          operator: In
-          values: [2]
-          containerName: pi
-      - action: Ignore
-        onPodConditions:
-          - type: DisruptionTarget
-      - action: Count
-        onExitCodes:
-          operator: In
-          values: [1]
-          containerName: pi
   jobTemplate:
     spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 60
+      podFailurePolicy:
+        rules:
+          - action: FailJob
+            onExitCodes:
+              containerName: contract-check
+              operator: In
+              values: [2]
+          - action: Ignore
+            onPodConditions:
+              - type: DisruptionTarget
+          - action: Count
+            onExitCodes:
+              containerName: contract-check
+              operator: In
+              values: [1]
       template:
         spec:
           containers:
@@ -48,13 +52,12 @@ spec:
               - /bin/sh
               - -c
               - |
-                sleep 90
                 if wget -S -q -O /tmp/response-body "$TARGET_URL" 2>/tmp/response-headers
                 then
                   failed=0
                   check() {
                     # $1 = what is checked, $2 = expected text, $3 = file to search
-                    if grep -qF "$2" "$3"
+                    if grep -qiF "$2" "$3"   # literal, case-insensitive (headers may be lowercase)
                     then
                       echo "PASS: $1"
                     else
