@@ -11,11 +11,13 @@ ConfigMap and a rollout, so each Pod serves exactly one known profile version.
 """
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
 import random
 import socket
+import urllib.request
 import uuid
 
 import redis
@@ -38,7 +40,23 @@ IDEMPOTENCY_TTL = int(os.environ.get("IDEMPOTENCY_TTL_SECONDS", "86400"))
 store = redis.Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
                              decode_responses=True, socket_timeout=2, socket_connect_timeout=2)
 
-app = FastAPI(title="payment-simulator")
+# Callbacks pending in THIS process. They live only in memory: if the Pod stops
+# before they're sent, they're lost. Shutdown waits up to SHUTDOWN_DRAIN_SECONDS.
+pending_callbacks: set[asyncio.Task] = set()
+SHUTDOWN_DRAIN_SECONDS = float(os.environ.get("SHUTDOWN_DRAIN_SECONDS", "25"))
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_app):
+    yield
+    if pending_callbacks:
+        print(f"shutdown: draining {len(pending_callbacks)} pending callbacks "
+              f"(up to {SHUTDOWN_DRAIN_SECONDS:.0f}s)", flush=True)
+        done, not_done = await asyncio.wait(pending_callbacks, timeout=SHUTDOWN_DRAIN_SECONDS)
+        print(f"shutdown: delivered {len(done)}, DROPPED {len(not_done)} callbacks", flush=True)
+
+
+app = FastAPI(title="payment-simulator", lifespan=lifespan)
 
 TRANSITIONS = {"capture": ("AUTHORIZED", "CAPTURED"), "refund": ("CAPTURED", "REFUNDED")}
 
@@ -79,6 +97,38 @@ async def simulate_processor(forced: str | None) -> JSONResponse | None:
 @app.get("/v1/profile")
 def profile():
     return reply(200, {"profile": PROFILE, "hash": PROFILE_HASH})
+
+
+def _post_json(url: str, body: dict) -> int:
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return resp.status
+
+
+async def deliver_callback(url: str, event: dict):
+    """Wait the profile's callback delay, then POST the event, retrying a few times."""
+    delay = PROFILE.get("callback_delay_ms", {"min": 1000, "max": 3000})
+    await asyncio.sleep(random.uniform(delay["min"], delay["max"]) / 1000)
+    copies = 2 if random.random() < PROFILE.get("callback_duplicate_rate", 0.0) else 1
+    for copy in range(copies):
+        for attempt in range(3):
+            try:
+                status = await asyncio.to_thread(_post_json, url, {**event, "delivery": copy + 1})
+                print(f"callback {event['event_id']} delivery={copy + 1} -> {status}", flush=True)
+                break
+            except Exception as exc:  # receiver down or slow: back off and retry
+                print(f"callback {event['event_id']} attempt {attempt + 1} failed: {exc}", flush=True)
+                await asyncio.sleep(2 ** attempt)
+
+
+def schedule_callback(url: str, run_id: str, payment: dict):
+    event = {"event_id": f"evt_{uuid.uuid4().hex[:12]}", "type": "payment.authorized",
+             "run_id": run_id, "payment_id": payment["id"], "status": payment["status"],
+             "sent_by": POD}
+    task = asyncio.get_running_loop().create_task(deliver_callback(url, event))
+    pending_callbacks.add(task)
+    task.add_done_callback(pending_callbacks.discard)
 
 
 def payment_key(run_id: str, payment_id: str) -> str:
@@ -149,6 +199,8 @@ async def authorize(request: Request,
                    "status": "DECLINED" if declined else "AUTHORIZED",
                    "responseCode": "05" if declined else "00"}
         store.set(payment_key(x_test_run_id, payment["id"]), json.dumps(payment))
+        if payload.get("callback_url"):
+            schedule_callback(payload["callback_url"], x_test_run_id, payment)
         return reply(201, payment)
 
     return await idempotent(request, x_test_run_id, idempotency_key, handler)

@@ -1,0 +1,11 @@
+{
+  "processor": "acme-pay",
+  "version": "v3",
+  "latency_ms": {"min": 20, "max": 80},
+  "error_rate": 0.0,
+  "throttle_rate": 0.0,
+  "retry_after_seconds": 1,
+  "timeout_seconds": 30,
+  "callback_delay_ms": {"min": 20000, "max": 40000},
+  "callback_duplicate_rate": 0.3
+}

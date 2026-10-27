@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: simulator
-          image: payment-simulator:0.3.0
+          image: payment-simulator:0.4.0
           ports:
             - name: http
               containerPort: 8080
@@ -55,7 +55,7 @@ spec:
       volumes:
         - name: profile-config
           configMap:
-            name: acme-pay-profile-v2
+            name: acme-pay-profile-v3
       topologySpreadConstraints:
         # Constraints apply only at scheduling time. matchLabelKeys stops a rollout
         # from counting the old revision's Pods (which then get deleted).
