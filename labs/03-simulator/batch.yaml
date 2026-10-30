@@ -1,0 +1,54 @@
+apiVersion: v1
+data:
+  payments.csv: "merchant_ref,amount\r\norder-001,1001\r\norder-002,1002\r\norder-003,1003\r\norder-004,1004\r\norder-005,1005\r\norder-006,1006\r\norder-007,1099\r\norder-008,1008\r\norder-009,1009\r\norder-010,1010\r\norder-011,1011\r\norder-012,1012\r\norder-013,1013\r\norder-014,1099\r\norder-015,1015\r\norder-016,1016\r\norder-017,1017\r\norder-018,1018\r\norder-019,1019\r\norder-020,1020\r\norder-021,1099\r\norder-022,1022\r\norder-023,1023\r\norder-024,1024\r\norder-025,1025\r\norder-026,1026\r\norder-027,1027\r\norder-028,1099\r\norder-029,1029\r\norder-030,1030\r\n"
+kind: ConfigMap
+metadata:
+  name: settlement-input-v1
+  namespace: simulator
+immutable: true   # scenario inputs are versioned: new input = new name (-v2)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: settlement-output
+  namespace: simulator
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: settlement-v1
+  namespace: simulator
+spec:
+  completionMode: Indexed
+  completions: 3
+  parallelism: 3
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      containers:
+      - image: payment-simulator:0.5.0
+        env:
+          - name: SHARDS
+            value: "3"
+        command: ["python", "batch.py"]
+        name: settlement-v1
+        volumeMounts:
+        - name: settlement-input
+          mountPath: /input
+        - name: settlement-output
+          mountPath: /output
+      volumes:
+      - name: settlement-input
+        configMap:
+          name: settlement-input-v1
+      - name: settlement-output
+        persistentVolumeClaim:
+          claimName: settlement-output
+      restartPolicy: Never
