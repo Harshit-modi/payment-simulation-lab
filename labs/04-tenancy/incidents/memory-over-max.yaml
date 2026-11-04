@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: noreq
+  name: noreq
+  namespace: team-retail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noreq
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: noreq
+    spec:
+      containers:
+      - command:
+        - sleep
+        - "3600"
+        image: busybox:1.36
+        name: busybox
+        resources:
+          requests:
+            memory: 128Mi
+          limits:
+            memory: 1Gi

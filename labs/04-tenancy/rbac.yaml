@@ -33,15 +33,22 @@ rules:
 - apiGroups: [""]
   resources: ["services", "configmaps"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# read-only: tenants can debug failed Pod creation but not delete the evidence
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["pods", "pods/log"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["create"]
+  verbs: ["create", "get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -52,15 +59,22 @@ rules:
 - apiGroups: [""]
   resources: ["services", "configmaps"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# read-only: tenants can debug failed Pod creation but not delete the evidence
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["pods", "pods/log"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["create"]
+  verbs: ["create", "get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
