@@ -143,6 +143,8 @@ API accepted it. A CNI without policy support silently ignores policies. Before 
 multi-tenancy labs, prove enforcement: show that a connection succeeds, apply a default-deny policy, and show that
 the same connection now fails.
 
+`scripts/verify.sh` step 8 runs this check automatically. Two lessons from phase 3: a new Pod's first moment of traffic **isn't policed** on kindnet, so tests must wait about 2s before connecting; and enforcement can stall silently, so re-check it rather than assuming it.
+
 ## Troubleshooting
 
 | Symptom | Check / fix |
@@ -168,5 +170,6 @@ the same connection now fails.
 5. A ClusterIP Service got EndpointSlices for both Pods.
 6. A busybox client resolved `web.lab-verify.svc.cluster.local` through CoreDNS (10.96.0.10) and got `HTTP/1.1 200 OK`.
 7. Helm 4.3.1 installed, listed, and uninstalled a local chart.
+8. **NetworkPolicy canary** (added 2026-11-05): a deny-ingress policy is applied and a client, after a 3s wait, must be **BLOCKED**. If it reports `LEAKED`, enforcement has stalled; `kubectl -n kube-system rollout restart ds/kindnet` restores it.
 
 The `lab-verify` namespace is deleted afterwards.
